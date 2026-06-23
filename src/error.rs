@@ -58,3 +58,41 @@ impl IntoResponse for AppError {
         (status, body).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::response::IntoResponse;
+
+    use super::*;
+
+    #[test]
+    fn app_errors_map_to_expected_status_codes() {
+        let cases = [
+            (
+                AppError::BadRequest("bad".to_owned()),
+                StatusCode::BAD_REQUEST,
+            ),
+            (AppError::Unauthorized, StatusCode::UNAUTHORIZED),
+            (
+                AppError::NotFound("missing".to_owned()),
+                StatusCode::NOT_FOUND,
+            ),
+            (
+                AppError::Conflict("conflict".to_owned()),
+                StatusCode::CONFLICT,
+            ),
+            (
+                AppError::Upstream("upstream".to_owned()),
+                StatusCode::BAD_GATEWAY,
+            ),
+            (
+                AppError::Other(anyhow::anyhow!("internal")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(error.into_response().status(), expected);
+        }
+    }
+}

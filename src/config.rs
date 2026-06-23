@@ -212,4 +212,71 @@ mod tests {
             "sqlite:///var/lib/jmcomic-bot-service/jm-bot.db"
         );
     }
+
+    #[test]
+    fn config_file_rejects_empty_tokens() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(
+            &path,
+            r#"{
+              "bot_tokens": ["", "  "],
+              "file_signing_secret": "dev-secret",
+              "worker_base_url": "http://127.0.0.1:8787"
+            }"#,
+        )
+        .unwrap();
+
+        let error = Config::from_file(&path).unwrap_err().to_string();
+        assert!(error.contains("config.bot_tokens"));
+    }
+
+    #[test]
+    fn config_file_rejects_invalid_numbers_and_addresses() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(
+            &path,
+            r#"{
+              "bot_tokens": ["dev"],
+              "file_signing_secret": "dev-secret",
+              "worker_base_url": "http://127.0.0.1:8787",
+              "bind_addr": "not-an-address",
+              "jpeg_quality": 0
+            }"#,
+        )
+        .unwrap();
+
+        let error = Config::from_file(&path).unwrap_err().to_string();
+        assert!(error.contains("config.jpeg_quality"));
+    }
+
+    #[test]
+    fn config_file_uses_explicit_database_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path().join("data");
+        let path = dir.path().join("config.json");
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{
+                  "bot_tokens": ["dev"],
+                  "file_signing_secret": "dev-secret",
+                  "worker_base_url": "http://127.0.0.1:8787",
+                  "data_dir": "{}",
+                  "database_url": "sqlite:///tmp/custom.db",
+                  "bind_addr": "127.0.0.1:3001",
+                  "jpeg_quality": 75
+                }}"#,
+                data_dir.display()
+            ),
+        )
+        .unwrap();
+
+        let config = Config::from_file(&path).unwrap();
+        assert_eq!(config.data_dir, data_dir);
+        assert_eq!(config.database_url, "sqlite:///tmp/custom.db");
+        assert_eq!(config.bind_addr.to_string(), "127.0.0.1:3001");
+        assert_eq!(config.jpeg_quality, 75);
+    }
 }

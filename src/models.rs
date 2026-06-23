@@ -253,3 +253,91 @@ pub fn sorted_chapters(album: &Album) -> Vec<ChapterInfo> {
 fn parse_series_order(value: &str) -> i64 {
     value.parse::<i64>().unwrap_or(i64::MAX)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn artifact_format_round_trips_extension_and_content_type() {
+        assert_eq!(
+            ArtifactFormat::from_str("zip").unwrap(),
+            ArtifactFormat::Zip
+        );
+        assert_eq!(
+            ArtifactFormat::from_str("cbz").unwrap(),
+            ArtifactFormat::Cbz
+        );
+        assert_eq!(
+            ArtifactFormat::from_str("pdf").unwrap(),
+            ArtifactFormat::Pdf
+        );
+        assert_eq!(ArtifactFormat::Zip.extension(), "zip");
+        assert_eq!(
+            ArtifactFormat::Cbz.content_type(),
+            "application/vnd.comicbook+zip"
+        );
+        assert_eq!(ArtifactFormat::Pdf.to_string(), "pdf");
+        assert!(ArtifactFormat::from_str("rar").is_err());
+    }
+
+    #[test]
+    fn job_status_display_uses_api_values() {
+        assert_eq!(JobStatus::Queued.to_string(), "queued");
+        assert_eq!(JobStatus::Running.to_string(), "running");
+        assert_eq!(JobStatus::Completed.to_string(), "completed");
+        assert_eq!(JobStatus::Failed.to_string(), "failed");
+    }
+
+    #[test]
+    fn sorted_chapters_uses_album_for_single_chapter() {
+        let album = album_with_series(vec![]);
+        assert_eq!(sorted_chapters(&album)[0].id, "album");
+        assert_eq!(sorted_chapters(&album)[0].order, 0);
+    }
+
+    #[test]
+    fn sorted_chapters_orders_series_and_pushes_invalid_sort_last() {
+        let album = album_with_series(vec![
+            SeriesItem {
+                id: "b".to_owned(),
+                name: "B".to_owned(),
+                sort: "2".to_owned(),
+            },
+            SeriesItem {
+                id: "bad".to_owned(),
+                name: "Bad".to_owned(),
+                sort: "abc".to_owned(),
+            },
+            SeriesItem {
+                id: "a".to_owned(),
+                name: "A".to_owned(),
+                sort: "1".to_owned(),
+            },
+        ]);
+        let ids = sorted_chapters(&album)
+            .into_iter()
+            .map(|chapter| chapter.id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["a", "b", "bad"]);
+    }
+
+    fn album_with_series(series: Vec<SeriesItem>) -> Album {
+        Album {
+            id: "album".to_owned(),
+            name: "Album".to_owned(),
+            images: Vec::new(),
+            description: None,
+            total_views: "0".to_owned(),
+            likes: "0".to_owned(),
+            series,
+            series_id: String::new(),
+            author: Vec::new(),
+            tags: Vec::new(),
+            works: Vec::new(),
+            actors: Vec::new(),
+        }
+    }
+}

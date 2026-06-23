@@ -291,6 +291,15 @@ curl -X POST "http://127.0.0.1:3000/api/v1/downloads" \
 cargo fmt
 cargo test
 cargo check
+scripts/coverage.sh
 ```
 
 The integration test uses a mock Worker and mock CDN, then runs the real service path: metadata fetch, image HTTP download, slice/JPEG processing, CBZ packaging, SQLite artifact record creation.
+
+The real upstream test is ignored by default because it requires a reachable Worker/CDN path:
+
+```bash
+JM_REAL_WORKER_BASE_URL=http://127.0.0.1:8787 \
+JM_REAL_ALBUM_ID=1446932 \
+cargo test --test upstream_real -- --ignored
+```

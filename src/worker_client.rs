@@ -109,3 +109,150 @@ impl WorkerClient {
             .map_err(|error| AppError::BadRequest(format!("invalid worker URL path: {error}")))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path, query_param},
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn search_uses_defaults_and_preserves_base_path() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/worker/search"))
+            .and(query_param("query", "blue"))
+            .and(query_param("page", "1"))
+            .and(query_param("orderBy", "mr"))
+            .and(query_param("time", "a"))
+            .and(query_param("mainTag", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "total": "1",
+                "content": []
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = WorkerClient::new(format!("{}/worker", server.uri())).unwrap();
+        let value = client
+            .search(&SearchQuery {
+                q: Some("blue".to_owned()),
+                query: None,
+                page: None,
+                order_by: None,
+                time: None,
+                main_tag: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(value["total"], "1");
+    }
+
+    #[tokio::test]
+    async fn search_rejects_missing_query() {
+        let client = WorkerClient::new("http://127.0.0.1:1".to_owned()).unwrap();
+        let error = client
+            .search(&SearchQuery {
+                q: None,
+                query: None,
+                page: None,
+                order_by: None,
+                time: None,
+                main_tag: None,
+            })
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("missing query"));
+    }
+
+    #[tokio::test]
+    async fn batch_photos_chunks_ids_and_maps_item_errors() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/batch-photo"))
+            .and(query_param("ids", ids(1, 20).join(",")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ok_batch(1, 20)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/batch-photo"))
+            .and(query_param("ids", "21"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {
+                    "photoId": "21",
+                    "photo": null,
+                    "error": {
+                        "message": "boom",
+                        "stage": "get_photo",
+                        "domain": null,
+                        "reference": null,
+                        "retryable": false
+                    }
+                }
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = WorkerClient::new(server.uri()).unwrap();
+        let error = client
+            .batch_photos(&ids(1, 21))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("failed to fetch photo 21"));
+    }
+
+    #[tokio::test]
+    async fn worker_http_errors_are_mapped() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/album/missing"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("missing"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/album/fail"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("fail"))
+            .mount(&server)
+            .await;
+
+        let client = WorkerClient::new(server.uri()).unwrap();
+        assert!(matches!(
+            client.album("missing").await.unwrap_err(),
+            AppError::NotFound(_)
+        ));
+        assert!(matches!(
+            client.album("fail").await.unwrap_err(),
+            AppError::Upstream(_)
+        ));
+    }
+
+    fn ids(start: usize, end: usize) -> Vec<String> {
+        (start..=end).map(|id| id.to_string()).collect()
+    }
+
+    fn ok_batch(start: usize, end: usize) -> serde_json::Value {
+        let items = (start..=end)
+            .map(|id| {
+                json!({
+                    "photoId": id.to_string(),
+                    "photo": {
+                        "id": id.to_string(),
+                        "name": format!("Chapter {id}"),
+                        "images": [],
+                        "scrambleId": 999999
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        serde_json::Value::Array(items)
+    }
+}
