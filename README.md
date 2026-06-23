@@ -92,8 +92,8 @@ journalctl -u jmcomic-bot-service -f
 Install a pinned release:
 
 ```bash
-curl -fsSL https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.0/install.sh -o /tmp/install-jmcomic-bot-service.sh
-sudo env JM_BOT_VERSION=v0.1.0 bash /tmp/install-jmcomic-bot-service.sh
+curl -fsSL https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.1/install.sh -o /tmp/install-jmcomic-bot-service.sh
+sudo env JM_BOT_VERSION=v0.1.1 bash /tmp/install-jmcomic-bot-service.sh
 ```
 
 Install and write the required config values in one command:
@@ -108,20 +108,22 @@ sudo env \
   bash /tmp/install-jmcomic-bot-service.sh
 ```
 
-Manual package install:
+Manual offline package install:
 
 ```bash
-curl -fLO https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.0/jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.1/jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
-cd jmcomic-bot-service-v0.1.0-x86_64-unknown-linux-gnu
-sudo bash scripts/install.sh
+cd jmcomic-bot-service-v0.1.1-x86_64-unknown-linux-gnu
+sudo bash scripts/install-offline.sh
 ```
+
+After the tarball has been downloaded and extracted, `scripts/install-offline.sh` installs only from local package files and does not contact GitHub.
 
 Installer environment knobs:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `JM_BOT_VERSION` | `latest` | Release tag, for example `v0.1.0`. |
+| `JM_BOT_VERSION` | `latest` | Release tag, for example `v0.1.1`. |
 | `JM_BOT_REPO` | `TunaFish2K/jmcomic-bot-service` | GitHub repo to download from. |
 | `START_SERVICE` | `1` | Set to `0` to install without starting systemd. |
 | `TARGET` | auto-detected | Release target. Currently `x86_64-unknown-linux-gnu` is published. |
@@ -135,8 +137,8 @@ The environment config writer is intentionally simple; keep token and URL values
 Publish a new binary release by pushing a `v*` tag. Keep the tag aligned with `Cargo.toml`'s package version:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 ## Development

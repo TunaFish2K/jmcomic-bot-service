@@ -24,7 +24,9 @@ install -m 0644 "$ROOT_DIR/config.example.json" "$STAGING_DIR/config.example.jso
 install -m 0644 "$ROOT_DIR/config.schema.json" "$STAGING_DIR/config.schema.json"
 install -m 0644 "$ROOT_DIR/systemd/jmcomic-bot-service.service" "$STAGING_DIR/systemd/jmcomic-bot-service.service"
 install -m 0755 "$ROOT_DIR/scripts/install.sh" "$STAGING_DIR/scripts/install.sh"
+install -m 0755 "$ROOT_DIR/scripts/install-offline.sh" "$STAGING_DIR/scripts/install-offline.sh"
 install -m 0644 "$ROOT_DIR/README.md" "$STAGING_DIR/README.md"
+install -m 0644 "$ROOT_DIR/README.zh-CN.md" "$STAGING_DIR/README.zh-CN.md"
 install -m 0755 "$ROOT_DIR/scripts/install.sh" "$OUT_DIR/install.sh"
 
 (

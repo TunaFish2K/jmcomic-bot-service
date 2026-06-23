@@ -92,8 +92,8 @@ journalctl -u jmcomic-bot-service -f
 安装指定 release：
 
 ```bash
-curl -fsSL https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.0/install.sh -o /tmp/install-jmcomic-bot-service.sh
-sudo env JM_BOT_VERSION=v0.1.0 bash /tmp/install-jmcomic-bot-service.sh
+curl -fsSL https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.1/install.sh -o /tmp/install-jmcomic-bot-service.sh
+sudo env JM_BOT_VERSION=v0.1.1 bash /tmp/install-jmcomic-bot-service.sh
 ```
 
 安装时直接写入必要配置：
@@ -108,20 +108,22 @@ sudo env \
   bash /tmp/install-jmcomic-bot-service.sh
 ```
 
-手动下载 tarball 安装：
+手动下载 tarball 后离线安装：
 
 ```bash
-curl -fLO https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.0/jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.1/jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
-cd jmcomic-bot-service-v0.1.0-x86_64-unknown-linux-gnu
-sudo bash scripts/install.sh
+cd jmcomic-bot-service-v0.1.1-x86_64-unknown-linux-gnu
+sudo bash scripts/install-offline.sh
 ```
+
+tarball 下载并解压后，`scripts/install-offline.sh` 只使用本地包内文件安装，不会访问 GitHub。
 
 安装脚本环境变量：
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `JM_BOT_VERSION` | `latest` | Release tag，例如 `v0.1.0`。 |
+| `JM_BOT_VERSION` | `latest` | Release tag，例如 `v0.1.1`。 |
 | `JM_BOT_REPO` | `TunaFish2K/jmcomic-bot-service` | 下载 release 的 GitHub 仓库。 |
 | `START_SERVICE` | `1` | 设为 `0` 时只安装，不启动 systemd 服务。 |
 | `TARGET` | 自动检测 | release target。目前发布 `x86_64-unknown-linux-gnu`。 |
@@ -135,8 +137,8 @@ sudo bash scripts/install.sh
 发布新的二进制 release：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 tag 应该和 `Cargo.toml` 里的 package version 保持一致。tag workflow 会构建并发布 `install.sh`、tarball 和 sha256 校验文件。

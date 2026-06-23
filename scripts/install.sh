@@ -12,6 +12,7 @@ DATA_DIR="${DATA_DIR:-/var/lib/jmcomic-bot-service}"
 REPO="${JM_BOT_REPO:-TunaFish2K/jmcomic-bot-service}"
 VERSION="${JM_BOT_VERSION:-latest}"
 START_SERVICE="${START_SERVICE:-1}"
+OFFLINE="${JM_BOT_OFFLINE:-0}"
 TMP_DIR=""
 
 log() {
@@ -56,6 +57,10 @@ download_url() {
 download_release() {
   local target="$1"
   local url file archive release_dir
+  [ "$OFFLINE" != "1" ] || fail "offline install requires an extracted release package. Run: sudo bash scripts/install-offline.sh"
+  need_command curl
+  need_command tar
+
   file="jmcomic-bot-service-${target}.tar.gz"
   archive="$TMP_DIR/$file"
   url="$(download_url "$target")"
@@ -165,8 +170,6 @@ start_service() {
 
 main() {
   need_root
-  need_command curl
-  need_command tar
   need_command systemctl
 
   TMP_DIR="$(mktemp -d)"
