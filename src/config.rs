@@ -1,6 +1,12 @@
-use std::{env, net::SocketAddr, path::PathBuf};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, bail};
+use serde::Deserialize;
+
+pub const DEFAULT_CONFIG_PATH: &str = "/etc/jmcomic-bot-service/config.json";
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -21,48 +27,73 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_env() -> anyhow::Result<Self> {
-        let data_dir = PathBuf::from(env_string("DATA_DIR", "/data"));
-        let database_url =
-            env::var("DATABASE_URL").unwrap_or_else(|_| sqlite_url_for_data_dir(&data_dir));
+    pub fn from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        let contents = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read config file {}", path.display()))?;
+        let file = serde_json::from_str::<ConfigFile>(&contents)
+            .with_context(|| format!("failed to parse config file {}", path.display()))?;
 
-        let bot_tokens = env::var("BOT_TOKENS")
-            .unwrap_or_default()
-            .split(',')
-            .map(str::trim)
+        let bot_tokens = file
+            .bot_tokens
+            .into_iter()
+            .map(|token| token.trim().to_owned())
             .filter(|token| !token.is_empty())
-            .map(ToOwned::to_owned)
             .collect::<Vec<_>>();
         if bot_tokens.is_empty() {
-            bail!("BOT_TOKENS must contain at least one bearer token");
+            bail!("config.bot_tokens must contain at least one token");
         }
 
-        let file_signing_secret = env::var("FILE_SIGNING_SECRET")
-            .context("FILE_SIGNING_SECRET must be set for signed file URLs")?;
-        if file_signing_secret.len() < 16 {
-            bail!("FILE_SIGNING_SECRET should be at least 16 characters");
+        if file.file_signing_secret.trim().is_empty() {
+            bail!("config.file_signing_secret must not be empty");
         }
 
-        let worker_base_url =
-            env::var("JM_WORKER_BASE_URL").context("JM_WORKER_BASE_URL must be set")?;
+        if file.worker_base_url.trim().is_empty() {
+            bail!("config.worker_base_url must not be empty");
+        }
+
+        if !(1..=100).contains(&file.jpeg_quality) {
+            bail!("config.jpeg_quality must be between 1 and 100");
+        }
+        if file.max_concurrent_jobs == 0 {
+            bail!("config.max_concurrent_jobs must be greater than 0");
+        }
+        if file.image_concurrency == 0 {
+            bail!("config.image_concurrency must be greater than 0");
+        }
+        if file.signed_url_ttl_seconds <= 0 {
+            bail!("config.signed_url_ttl_seconds must be greater than 0");
+        }
+        if file.artifact_ttl_days <= 0 {
+            bail!("config.artifact_ttl_days must be greater than 0");
+        }
+        if file.max_pages_per_job == 0 {
+            bail!("config.max_pages_per_job must be greater than 0");
+        }
+
+        let database_url = file
+            .database_url
+            .unwrap_or_else(|| sqlite_url_for_data_dir(&file.data_dir));
+        let bind_addr = file
+            .bind_addr
+            .parse::<SocketAddr>()
+            .with_context(|| "config.bind_addr must be a socket address")?;
 
         Ok(Self {
             bot_tokens,
-            file_signing_secret,
-            worker_base_url,
-            data_dir,
+            file_signing_secret: file.file_signing_secret,
+            worker_base_url: file.worker_base_url,
+            data_dir: file.data_dir,
             database_url,
-            max_concurrent_jobs: env_parse("MAX_CONCURRENT_JOBS", 2)?,
-            image_concurrency: env_parse("IMAGE_CONCURRENCY", 6)?,
-            signed_url_ttl_seconds: env_parse("SIGNED_URL_TTL_SECONDS", 3600)?,
-            artifact_ttl_days: env_parse("ARTIFACT_TTL_DAYS", 30)?,
-            cache_max_bytes: env_parse("CACHE_MAX_BYTES", 53_687_091_200_u64)?,
-            max_pages_per_job: env_parse("MAX_PAGES_PER_JOB", 800)?,
-            bind_addr: env_string("BIND_ADDR", "0.0.0.0:3000")
-                .parse()
-                .context("BIND_ADDR must be a socket address")?,
-            jpeg_quality: env_parse("JPEG_QUALITY", 90)?,
-            public_base_url: env::var("PUBLIC_BASE_URL").ok(),
+            max_concurrent_jobs: file.max_concurrent_jobs,
+            image_concurrency: file.image_concurrency,
+            signed_url_ttl_seconds: file.signed_url_ttl_seconds,
+            artifact_ttl_days: file.artifact_ttl_days,
+            cache_max_bytes: file.cache_max_bytes,
+            max_pages_per_job: file.max_pages_per_job,
+            bind_addr,
+            jpeg_quality: file.jpeg_quality,
+            public_base_url: file.public_base_url,
         })
     }
 
@@ -82,23 +113,103 @@ impl Config {
     }
 }
 
-fn env_string(key: &str, default: &str) -> String {
-    env::var(key).unwrap_or_else(|_| default.to_owned())
+#[derive(Debug, Deserialize)]
+struct ConfigFile {
+    bot_tokens: Vec<String>,
+    file_signing_secret: String,
+    worker_base_url: String,
+    #[serde(default = "default_data_dir")]
+    data_dir: PathBuf,
+    #[serde(default)]
+    database_url: Option<String>,
+    #[serde(default = "default_max_concurrent_jobs")]
+    max_concurrent_jobs: usize,
+    #[serde(default = "default_image_concurrency")]
+    image_concurrency: usize,
+    #[serde(default = "default_signed_url_ttl_seconds")]
+    signed_url_ttl_seconds: i64,
+    #[serde(default = "default_artifact_ttl_days")]
+    artifact_ttl_days: i64,
+    #[serde(default = "default_cache_max_bytes")]
+    cache_max_bytes: u64,
+    #[serde(default = "default_max_pages_per_job")]
+    max_pages_per_job: usize,
+    #[serde(default = "default_bind_addr")]
+    bind_addr: String,
+    #[serde(default = "default_jpeg_quality")]
+    jpeg_quality: u8,
+    #[serde(default)]
+    public_base_url: Option<String>,
 }
 
-fn env_parse<T>(key: &str, default: T) -> anyhow::Result<T>
-where
-    T: std::str::FromStr,
-    T::Err: std::error::Error + Send + Sync + 'static,
-{
-    match env::var(key) {
-        Ok(value) => value
-            .parse::<T>()
-            .with_context(|| format!("{key} has invalid value")),
-        Err(_) => Ok(default),
-    }
+fn default_data_dir() -> PathBuf {
+    PathBuf::from("/var/lib/jmcomic-bot-service")
+}
+
+fn default_max_concurrent_jobs() -> usize {
+    2
+}
+
+fn default_image_concurrency() -> usize {
+    6
+}
+
+fn default_signed_url_ttl_seconds() -> i64 {
+    3600
+}
+
+fn default_artifact_ttl_days() -> i64 {
+    30
+}
+
+fn default_cache_max_bytes() -> u64 {
+    53_687_091_200
+}
+
+fn default_max_pages_per_job() -> usize {
+    800
+}
+
+fn default_bind_addr() -> String {
+    "0.0.0.0:3000".to_owned()
+}
+
+fn default_jpeg_quality() -> u8 {
+    90
 }
 
 fn sqlite_url_for_data_dir(data_dir: &std::path::Path) -> String {
     format!("sqlite://{}", data_dir.join("jm-bot.db").display())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_file_loads_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(
+            &path,
+            r#"{
+              "bot_tokens": ["dev"],
+              "file_signing_secret": "dev-secret",
+              "worker_base_url": "http://127.0.0.1:8787"
+            }"#,
+        )
+        .unwrap();
+
+        let config = Config::from_file(&path).unwrap();
+        assert_eq!(config.bot_tokens, vec!["dev"]);
+        assert_eq!(config.bind_addr.to_string(), "0.0.0.0:3000");
+        assert_eq!(
+            config.data_dir,
+            PathBuf::from("/var/lib/jmcomic-bot-service")
+        );
+        assert_eq!(
+            config.database_url,
+            "sqlite:///var/lib/jmcomic-bot-service/jm-bot.db"
+        );
+    }
 }

@@ -10,50 +10,105 @@ Rust VPS backend for a bot: it reuses the existing Cloudflare Worker for JMComic
 - Async download jobs with progress polling.
 - ZIP, CBZ, and PDF output.
 - Short-lived HMAC-signed file URLs that do not require bearer auth.
-- Docker-ready single service.
+- JSON config file with JSON Schema editor completion.
+- systemd unit for VPS deployment.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and edit it.
+Copy `config.example.json` and edit it. The example includes:
 
-| Variable | Default | Required | Description |
+```json
+"$schema": "./config.schema.json"
+```
+
+Keep that line when editing locally to get editor completion and validation.
+
+Default config path:
+
+```text
+/etc/jmcomic-bot-service/config.json
+```
+
+You can override it with `--config /path/to/config.json` or `JM_BOT_CONFIG=/path/to/config.json`.
+
+| Field | Default | Required | Description |
 | --- | --- | --- | --- |
-| `BOT_TOKENS` | none | yes | Comma-separated bearer tokens accepted by `/api/v1/*`, except signed file URLs. |
-| `FILE_SIGNING_SECRET` | none | yes | HMAC secret for short-lived file links. Use a long random string. |
-| `JM_WORKER_BASE_URL` | none | yes | Existing Worker base URL, for example `https://xxx.workers.dev`. |
-| `PUBLIC_BASE_URL` | none | no | Public service origin used when returning absolute `download_url`s. If omitted, URLs are relative. |
-| `DATA_DIR` | `/data` | no | Persistent data root. |
-| `DATABASE_URL` | `sqlite://$DATA_DIR/jm-bot.db` | no | SQLite URL. |
-| `BIND_ADDR` | `0.0.0.0:3000` | no | Listen address. |
-| `MAX_CONCURRENT_JOBS` | `2` | no | Number of background archive jobs. |
-| `IMAGE_CONCURRENCY` | `6` | no | Parallel image downloads/processes inside one job. |
-| `SIGNED_URL_TTL_SECONDS` | `3600` | no | Generated file URL lifetime. |
-| `ARTIFACT_TTL_DAYS` | `30` | no | Artifact expiry metadata. |
-| `CACHE_MAX_BYTES` | `53687091200` | no | Reserved for cache pruning policy. |
-| `MAX_PAGES_PER_JOB` | `800` | no | Hard page-count limit per job. |
-| `JPEG_QUALITY` | `90` | no | JPEG output quality, 1-100. |
+| `bot_tokens` | none | yes | Bearer tokens accepted by `/api/v1/*`, except signed file URLs. |
+| `file_signing_secret` | none | yes | HMAC secret for short-lived file links. |
+| `worker_base_url` | none | yes | Existing Worker base URL, for example `https://xxx.workers.dev`. |
+| `public_base_url` | none | no | Public service origin used when returning absolute `download_url`s. If omitted, URLs are relative. |
+| `data_dir` | `/var/lib/jmcomic-bot-service` | no | Persistent data root. |
+| `database_url` | `sqlite://{data_dir}/jm-bot.db` | no | SQLite URL. |
+| `bind_addr` | `0.0.0.0:3000` | no | Listen address. |
+| `max_concurrent_jobs` | `2` | no | Number of background archive jobs. |
+| `image_concurrency` | `6` | no | Parallel image downloads/processes inside one job. |
+| `signed_url_ttl_seconds` | `3600` | no | Generated file URL lifetime. |
+| `artifact_ttl_days` | `30` | no | Artifact expiry metadata. |
+| `cache_max_bytes` | `53687091200` | no | Reserved for cache pruning policy. |
+| `max_pages_per_job` | `800` | no | Hard page-count limit per job. |
+| `jpeg_quality` | `90` | no | JPEG output quality, 1-100. |
 
 Persistent layout:
 
-- `/data/jm-bot.db`
-- `/data/artifacts/{artifact_id}.{zip|cbz|pdf}`
-- `/data/artifacts/covers/{album_id}.jpg`
-- `/data/tmp`
+- `{data_dir}/jm-bot.db`
+- `{data_dir}/artifacts/{artifact_id}.{zip|cbz|pdf}`
+- `{data_dir}/artifacts/covers/{album_id}.jpg`
+- `{data_dir}/tmp`
 
 ## Run
 
+Build and run locally:
+
 ```bash
-cp .env.example .env
-docker compose up --build -d
+cargo build --release
+cp config.example.json ./config.json
+./target/release/jmcomic-bot-service --config ./config.json
 ```
 
-Local dev:
+Development:
 
 ```bash
-BOT_TOKENS=dev \
-FILE_SIGNING_SECRET=dev-secret-long-enough \
-JM_WORKER_BASE_URL=http://127.0.0.1:8787 \
-cargo run
+cargo run -- --config ./config.json
+```
+
+## systemd
+
+Build the binary on the VPS:
+
+```bash
+cargo build --release
+sudo install -m 0755 target/release/jmcomic-bot-service /usr/local/bin/jmcomic-bot-service
+```
+
+Install config and schema:
+
+```bash
+sudo install -d -m 0755 /etc/jmcomic-bot-service
+sudo install -m 0644 config.example.json /etc/jmcomic-bot-service/config.json
+sudo install -m 0644 config.schema.json /etc/jmcomic-bot-service/config.schema.json
+sudoedit /etc/jmcomic-bot-service/config.json
+```
+
+Create the service user and data directory:
+
+```bash
+sudo useradd --system --home /var/lib/jmcomic-bot-service --shell /usr/sbin/nologin jmcomic-bot
+sudo install -d -o jmcomic-bot -g jmcomic-bot -m 0755 /var/lib/jmcomic-bot-service
+```
+
+Install and start the unit:
+
+```bash
+sudo install -m 0644 systemd/jmcomic-bot-service.service /etc/systemd/system/jmcomic-bot-service.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now jmcomic-bot-service
+sudo systemctl status jmcomic-bot-service
+```
+
+Logs:
+
+```bash
+journalctl -u jmcomic-bot-service -f
 ```
 
 ## Authentication
@@ -236,7 +291,6 @@ curl -X POST "http://127.0.0.1:3000/api/v1/downloads" \
 cargo fmt
 cargo test
 cargo check
-docker build .
 ```
 
 The integration test uses a mock Worker and mock CDN, then runs the real service path: metadata fetch, image HTTP download, slice/JPEG processing, CBZ packaging, SQLite artifact record creation.

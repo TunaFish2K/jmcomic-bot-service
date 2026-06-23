@@ -1,0 +1,17 @@
+{
+  "$schema": "./config.schema.json",
+  "bot_tokens": ["change-me-bot-token"],
+  "file_signing_secret": "change-me-signing-secret",
+  "worker_base_url": "https://your-worker.example.workers.dev",
+  "public_base_url": "https://bot-backend.example.com",
+  "data_dir": "/var/lib/jmcomic-bot-service",
+  "database_url": "sqlite:///var/lib/jmcomic-bot-service/jm-bot.db",
+  "bind_addr": "0.0.0.0:3000",
+  "max_concurrent_jobs": 2,
+  "image_concurrency": 6,
+  "signed_url_ttl_seconds": 3600,
+  "artifact_ttl_days": 30,
+  "cache_max_bytes": 53687091200,
+  "max_pages_per_job": 800,
+  "jpeg_quality": 90
+}

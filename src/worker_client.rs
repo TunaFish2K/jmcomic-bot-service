@@ -14,7 +14,7 @@ pub struct WorkerClient {
 impl WorkerClient {
     pub fn new(base_url: String) -> AppResult<Self> {
         let mut base_url = Url::parse(&base_url).map_err(|error| {
-            AppError::BadRequest(format!("invalid JM_WORKER_BASE_URL: {error}"))
+            AppError::BadRequest(format!("invalid config.worker_base_url: {error}"))
         })?;
         if !base_url.path().ends_with('/') {
             let path = format!("{}/", base_url.path());

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/jmcomic-bot-service/config.schema.json",
+  "title": "jmcomic-bot-service config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bot_tokens", "file_signing_secret", "worker_base_url"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Editor hint for this schema."
+    },
+    "bot_tokens": {
+      "type": "array",
+      "description": "Bearer tokens accepted by protected /api/v1 endpoints.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "file_signing_secret": {
+      "type": "string",
+      "description": "HMAC secret used to sign short-lived file URLs.",
+      "minLength": 1
+    },
+    "worker_base_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Existing metadata Worker base URL."
+    },
+    "public_base_url": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "Public service origin for absolute download_url values. Relative URLs are returned when omitted."
+    },
+    "data_dir": {
+      "type": "string",
+      "default": "/var/lib/jmcomic-bot-service",
+      "description": "Persistent data root for SQLite, artifacts, covers, and temp files."
+    },
+    "database_url": {
+      "type": "string",
+      "default": "sqlite:///var/lib/jmcomic-bot-service/jm-bot.db",
+      "description": "SQLite URL. If omitted, it is derived from data_dir."
+    },
+    "bind_addr": {
+      "type": "string",
+      "default": "0.0.0.0:3000",
+      "examples": ["127.0.0.1:3000", "0.0.0.0:3000"],
+      "description": "Socket address the service listens on."
+    },
+    "max_concurrent_jobs": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 2,
+      "description": "Number of background archive workers."
+    },
+    "image_concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 6,
+      "description": "Parallel image downloads/processes inside one job."
+    },
+    "signed_url_ttl_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3600,
+      "description": "Lifetime of generated signed file URLs."
+    },
+    "artifact_ttl_days": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 30,
+      "description": "Artifact expiry metadata in days."
+    },
+    "cache_max_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 53687091200,
+      "description": "Reserved for cache pruning policy."
+    },
+    "max_pages_per_job": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 800,
+      "description": "Hard page-count limit per job."
+    },
+    "jpeg_quality": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 90,
+      "description": "JPEG output quality."
+    }
+  }
+}

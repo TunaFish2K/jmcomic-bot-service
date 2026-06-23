@@ -1,0 +1,22 @@
+[Unit]
+Description=JMComic Bot Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jmcomic-bot
+Group=jmcomic-bot
+WorkingDirectory=/var/lib/jmcomic-bot-service
+Environment=RUST_LOG=jmcomic_bot_service=info,tower_http=info
+ExecStart=/usr/local/bin/jmcomic-bot-service --config /etc/jmcomic-bot-service/config.json
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/jmcomic-bot-service
+
+[Install]
+WantedBy=multi-user.target
