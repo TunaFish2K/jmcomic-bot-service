@@ -1,0 +1,242 @@
+# jmcomic-bot-service
+
+Rust VPS backend for a bot: it reuses the existing Cloudflare Worker for JMComic metadata, then acts like the web client for image download, slice restore, JPEG conversion, archive/PDF generation, local caching, and signed file delivery.
+
+## Features
+
+- Bearer-token protected bot API.
+- Worker-backed search, album info, chapter photo metadata.
+- Local SQLite metadata cache and local disk artifact cache.
+- Async download jobs with progress polling.
+- ZIP, CBZ, and PDF output.
+- Short-lived HMAC-signed file URLs that do not require bearer auth.
+- Docker-ready single service.
+
+## Configuration
+
+Copy `.env.example` to `.env` and edit it.
+
+| Variable | Default | Required | Description |
+| --- | --- | --- | --- |
+| `BOT_TOKENS` | none | yes | Comma-separated bearer tokens accepted by `/api/v1/*`, except signed file URLs. |
+| `FILE_SIGNING_SECRET` | none | yes | HMAC secret for short-lived file links. Use a long random string. |
+| `JM_WORKER_BASE_URL` | none | yes | Existing Worker base URL, for example `https://xxx.workers.dev`. |
+| `PUBLIC_BASE_URL` | none | no | Public service origin used when returning absolute `download_url`s. If omitted, URLs are relative. |
+| `DATA_DIR` | `/data` | no | Persistent data root. |
+| `DATABASE_URL` | `sqlite://$DATA_DIR/jm-bot.db` | no | SQLite URL. |
+| `BIND_ADDR` | `0.0.0.0:3000` | no | Listen address. |
+| `MAX_CONCURRENT_JOBS` | `2` | no | Number of background archive jobs. |
+| `IMAGE_CONCURRENCY` | `6` | no | Parallel image downloads/processes inside one job. |
+| `SIGNED_URL_TTL_SECONDS` | `3600` | no | Generated file URL lifetime. |
+| `ARTIFACT_TTL_DAYS` | `30` | no | Artifact expiry metadata. |
+| `CACHE_MAX_BYTES` | `53687091200` | no | Reserved for cache pruning policy. |
+| `MAX_PAGES_PER_JOB` | `800` | no | Hard page-count limit per job. |
+| `JPEG_QUALITY` | `90` | no | JPEG output quality, 1-100. |
+
+Persistent layout:
+
+- `/data/jm-bot.db`
+- `/data/artifacts/{artifact_id}.{zip|cbz|pdf}`
+- `/data/artifacts/covers/{album_id}.jpg`
+- `/data/tmp`
+
+## Run
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+Local dev:
+
+```bash
+BOT_TOKENS=dev \
+FILE_SIGNING_SECRET=dev-secret-long-enough \
+JM_WORKER_BASE_URL=http://127.0.0.1:8787 \
+cargo run
+```
+
+## Authentication
+
+All endpoints under `/api/v1` require:
+
+```http
+Authorization: Bearer <token>
+```
+
+Exception: `GET /api/v1/files/{artifact_id}?exp=&sig=` uses only the signed query string.
+
+## API
+
+### `GET /health`
+
+Public health check.
+
+Response:
+
+```json
+{ "ok": true }
+```
+
+### `GET /api/v1/search`
+
+Proxy search through the Worker.
+
+Query:
+
+| Name | Required | Description |
+| --- | --- | --- |
+| `q` or `query` | yes | Search keyword. |
+| `page` | no | Page number, default `1`. |
+| `orderBy` | no | `mr`, `mv`, `mp`, `tf`; default `mr`. |
+| `time` | no | `a`, `t`, `w`, `m`; default `a`. |
+| `mainTag` | no | `0`-`4`, default `0`. |
+
+Response is the Worker search JSON unchanged.
+
+### `GET /api/v1/albums/{album_id}`
+
+Returns album info plus bot-friendly sorted chapter list.
+
+Response:
+
+```json
+{
+  "id": "123",
+  "name": "Album title",
+  "images": ["00001.jpg"],
+  "description": "intro",
+  "totalViews": "1000",
+  "likes": "99",
+  "series": [{ "id": "123", "name": "第1話", "sort": "1" }],
+  "seriesID": "123",
+  "author": ["author"],
+  "tags": ["tag"],
+  "works": [],
+  "actors": [],
+  "chapters": [{ "id": "123", "name": "第1話", "order": 1 }]
+}
+```
+
+### `GET /api/v1/albums/{album_id}/cover`
+
+Downloads the first chapter image, restores slices, converts it to JPEG, stores it under `/data/artifacts/covers`, and returns `image/jpeg`.
+
+### `POST /api/v1/downloads`
+
+Creates or reuses a download job.
+
+Request:
+
+```json
+{
+  "album_id": "123",
+  "photo_ids": ["123", "124"],
+  "format": "cbz",
+  "force": false
+}
+```
+
+Fields:
+
+| Name | Required | Description |
+| --- | --- | --- |
+| `album_id` | yes | Album id used for title/cache grouping. |
+| `photo_ids` | no | Chapter ids. If omitted, service fetches the album and uses sorted series chapters, or `album_id` for single-chapter albums. |
+| `format` | yes | `zip`, `cbz`, or `pdf`. |
+| `force` | no | If `true`, bypasses existing cached artifact and creates a new job. |
+
+Response:
+
+```json
+{
+  "job_id": "uuid",
+  "status": "queued",
+  "format": "cbz",
+  "album_id": "123",
+  "photo_ids": ["123", "124"],
+  "stage": "queued",
+  "progress_done": 0,
+  "progress_total": 0,
+  "cached": false,
+  "artifact_id": null,
+  "download_url": null,
+  "error": null,
+  "created_at": 1771682400,
+  "updated_at": 1771682400
+}
+```
+
+Statuses: `queued`, `running`, `completed`, `failed`.
+
+Stages: `queued`, `metadata`, `downloading`, `archive`, `completed`, `failed`.
+
+If an artifact cache hit occurs, `status` is `completed`, `cached` is `true`, and `download_url` is already available.
+
+### `GET /api/v1/downloads/{job_id}`
+
+Polls job progress.
+
+Response shape is the same as `POST /api/v1/downloads`.
+
+### `GET /api/v1/artifacts/{artifact_id}`
+
+Returns artifact metadata and a fresh signed URL.
+
+Response:
+
+```json
+{
+  "artifact_id": "uuid",
+  "format": "cbz",
+  "title": "Album title",
+  "size_bytes": 123456,
+  "sha256": "hex",
+  "page_count": 120,
+  "download_url": "/api/v1/files/uuid?exp=1771686000&sig=...",
+  "created_at": 1771682400,
+  "last_accessed_at": 1771682400,
+  "expires_at": 1774274400
+}
+```
+
+### `GET /api/v1/files/{artifact_id}?exp=&sig=`
+
+Serves the artifact file. No bearer token is required; the HMAC signature and expiry are mandatory.
+
+Responses:
+
+- `200`: file stream with `Content-Disposition: attachment`.
+- `401`: invalid or expired signature.
+- `404`: artifact row missing, expired, or file missing.
+
+## Bot Flow
+
+1. Search: `GET /api/v1/search?q=...`
+2. Show details: `GET /api/v1/albums/{album_id}`
+3. Start archive: `POST /api/v1/downloads`
+4. Poll: `GET /api/v1/downloads/{job_id}`
+5. Send file: use `download_url` when status is `completed`
+
+Example:
+
+```bash
+curl -H "Authorization: Bearer dev" \
+  "http://127.0.0.1:3000/api/v1/search?q=test"
+
+curl -X POST "http://127.0.0.1:3000/api/v1/downloads" \
+  -H "Authorization: Bearer dev" \
+  -H "Content-Type: application/json" \
+  -d '{"album_id":"123","format":"cbz"}'
+```
+
+## Verification
+
+```bash
+cargo fmt
+cargo test
+cargo check
+docker build .
+```
+
+The integration test uses a mock Worker and mock CDN, then runs the real service path: metadata fetch, image HTTP download, slice/JPEG processing, CBZ packaging, SQLite artifact record creation.
