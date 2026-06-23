@@ -55,7 +55,87 @@ Persistent layout:
 - `{data_dir}/artifacts/covers/{album_id}.jpg`
 - `{data_dir}/tmp`
 
-## Run
+## Binary Install
+
+The VPS install path does not need Rust or Cargo. Release tags build a Linux x86_64 binary in GitHub Actions and publish this asset:
+
+```text
+jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
+```
+
+Install the latest release:
+
+```bash
+curl -fsSL https://github.com/TunaFish2K/jmcomic-bot-service/releases/latest/download/install.sh | sudo bash
+```
+
+That installs:
+
+- `/usr/local/bin/jmcomic-bot-service`
+- `/etc/jmcomic-bot-service/config.json`
+- `/etc/jmcomic-bot-service/config.schema.json`
+- `/etc/systemd/system/jmcomic-bot-service.service`
+- `/var/lib/jmcomic-bot-service`
+
+If the installed config still contains placeholders, the installer leaves the service stopped. Edit the config and start it:
+
+```bash
+sudoedit /etc/jmcomic-bot-service/config.json
+sudo systemctl enable --now jmcomic-bot-service
+journalctl -u jmcomic-bot-service -f
+```
+
+Install a pinned release:
+
+```bash
+curl -fsSL https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.0/install.sh -o /tmp/install-jmcomic-bot-service.sh
+sudo env JM_BOT_VERSION=v0.1.0 bash /tmp/install-jmcomic-bot-service.sh
+```
+
+Install and write the required config values in one command:
+
+```bash
+curl -fsSL https://github.com/TunaFish2K/jmcomic-bot-service/releases/latest/download/install.sh -o /tmp/install-jmcomic-bot-service.sh
+sudo env \
+  WORKER_BASE_URL="https://your-worker.example.workers.dev" \
+  BOT_TOKEN="change-me-bot-token" \
+  SIGNING_SECRET="change-me-signing-secret" \
+  PUBLIC_BASE_URL="https://bot-backend.example.com" \
+  bash /tmp/install-jmcomic-bot-service.sh
+```
+
+Manual package install:
+
+```bash
+curl -fLO https://github.com/TunaFish2K/jmcomic-bot-service/releases/download/v0.1.0/jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf jmcomic-bot-service-x86_64-unknown-linux-gnu.tar.gz
+cd jmcomic-bot-service-v0.1.0-x86_64-unknown-linux-gnu
+sudo bash scripts/install.sh
+```
+
+Installer environment knobs:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `JM_BOT_VERSION` | `latest` | Release tag, for example `v0.1.0`. |
+| `JM_BOT_REPO` | `TunaFish2K/jmcomic-bot-service` | GitHub repo to download from. |
+| `START_SERVICE` | `1` | Set to `0` to install without starting systemd. |
+| `TARGET` | auto-detected | Release target. Currently `x86_64-unknown-linux-gnu` is published. |
+| `WORKER_BASE_URL` | none | Required when writing config from env. |
+| `BOT_TOKEN` | none | Required when writing config from env. |
+| `SIGNING_SECRET` | none | Required when writing config from env. |
+| `PUBLIC_BASE_URL` | `null` | Optional public origin for absolute file URLs. |
+
+The environment config writer is intentionally simple; keep token and URL values as plain strings without quotes or newlines.
+
+Publish a new binary release by pushing a `v*` tag. Keep the tag aligned with `Cargo.toml`'s package version:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+## Development
 
 Build and run locally:
 
@@ -65,50 +145,8 @@ cp config.example.json ./config.json
 ./target/release/jmcomic-bot-service --config ./config.json
 ```
 
-Development:
-
 ```bash
 cargo run -- --config ./config.json
-```
-
-## systemd
-
-Build the binary on the VPS:
-
-```bash
-cargo build --release
-sudo install -m 0755 target/release/jmcomic-bot-service /usr/local/bin/jmcomic-bot-service
-```
-
-Install config and schema:
-
-```bash
-sudo install -d -m 0755 /etc/jmcomic-bot-service
-sudo install -m 0644 config.example.json /etc/jmcomic-bot-service/config.json
-sudo install -m 0644 config.schema.json /etc/jmcomic-bot-service/config.schema.json
-sudoedit /etc/jmcomic-bot-service/config.json
-```
-
-Create the service user and data directory:
-
-```bash
-sudo useradd --system --home /var/lib/jmcomic-bot-service --shell /usr/sbin/nologin jmcomic-bot
-sudo install -d -o jmcomic-bot -g jmcomic-bot -m 0755 /var/lib/jmcomic-bot-service
-```
-
-Install and start the unit:
-
-```bash
-sudo install -m 0644 systemd/jmcomic-bot-service.service /etc/systemd/system/jmcomic-bot-service.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now jmcomic-bot-service
-sudo systemctl status jmcomic-bot-service
-```
-
-Logs:
-
-```bash
-journalctl -u jmcomic-bot-service -f
 ```
 
 ## Authentication
@@ -292,6 +330,8 @@ cargo fmt
 cargo test
 cargo check
 scripts/coverage.sh
+cargo build --release --target "$(rustc -vV | awk '/host:/ {print $2}')"
+scripts/package-release.sh
 ```
 
 The integration test uses a mock Worker and mock CDN, then runs the real service path: metadata fetch, image HTTP download, slice/JPEG processing, CBZ packaging, SQLite artifact record creation.
