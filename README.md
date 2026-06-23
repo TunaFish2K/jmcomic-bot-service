@@ -1,5 +1,7 @@
 # jmcomic-bot-service
 
+[中文文档](README.zh-CN.md)
+
 Rust VPS backend for a bot: it reuses the existing Cloudflare Worker for JMComic metadata, then acts like the web client for image download, slice restore, JPEG conversion, archive/PDF generation, local caching, and signed file delivery.
 
 ## Features
@@ -68,6 +70,8 @@ Install the latest release:
 ```bash
 curl -fsSL https://github.com/TunaFish2K/jmcomic-bot-service/releases/latest/download/install.sh | sudo bash
 ```
+
+This URL exists only after the first `v*` tag release has been published.
 
 That installs:
 
